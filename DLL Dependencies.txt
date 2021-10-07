@@ -1,0 +1,6 @@
+Assembly-CSharp.Base.mm.dll
+Assembly-CSharp.dll
+UnityEngine.CoreModule.Base.mm.dll
+UnityEngine.CoreModule.dll
+MonoMod.RuntimeDetour.dll
+MonoMod.Utils.dll
