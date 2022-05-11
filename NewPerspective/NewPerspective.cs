@@ -1,41 +1,22 @@
-﻿using UnityEngine;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System;
 using MonoMod.RuntimeDetour;
-using System.Reflection;
-using System.Collections;
+using UnityEngine;
 using Dungeonator;
 
 namespace NewPerspective { 
 
     public class NewPerspective : ETGModule {
-
-        public static bool Enable3D = false;
-        public static bool DisableRoomOcclusion = false;
-        public static bool Enable43AspectRatio = false;
         
         public static readonly string ConsoleCommandName = "perspective";
         public static readonly string PerspectiveModeEnabled = "3DModeEnabled";
         public static readonly string RoomOcclusionDisabled = "RoomOcclusionLayerDisabled";
         public static readonly string AspectRatioOverrideEnabled = "4_3AspectRatioOverrideEnabled";
         public static readonly string ModNameInGreen = "<color=#00FF00>[NewPerspective]</color> ";
-        
-
-        public static GameOptions.PreferredScalingMode previousScalingMode;
-        public static float? PreviousAspectRatioOverride;
-        public static float PreviousZoomScaleOverride;
-
-
-        public static Hook zOffsetHook;
-        public static Hook zSpriteDepthHook;
-        public static Hook gameManagerHook;
-
+                
         public static GameObject OcclusionMonitorObject;
-
-        private void GameManager_Awake(Action<GameManager> orig, GameManager self) {
-            orig(self);
-            self.OnNewLevelFullyLoaded += OnLevelFullyLoaded;
-        }
+        public static OcclusionMonitor occlusionMonitor;
+        
         
         public override void Init() { }
         
@@ -44,50 +25,10 @@ namespace NewPerspective {
             ETGModConsole.Commands.GetGroup(ConsoleCommandName).AddUnit("toggle3d", Toggle3DSetting);
             ETGModConsole.Commands.GetGroup(ConsoleCommandName).AddUnit("occlusion", ToggleRoomOcclusion);
             ETGModConsole.Commands.GetGroup(ConsoleCommandName).AddUnit("aspectratio", Toggle43Aspect);
-                        
-            PreviousZoomScaleOverride = GameManager.Instance.MainCameraController.OverrideZoomScale;
-
-            OcclusionMonitorObject = new GameObject("Occlusion Monitor", new Type[] { typeof(OcclusionMonitor) });
-            UnityEngine.Object.DontDestroyOnLoad(OcclusionMonitorObject);
-
-            GameManager.Instance.StartCoroutine(WaitForCharacterSelect());
+            
+            CreateMonitor(true);
         }
 
-        private static IEnumerator WaitForCharacterSelect(bool skipInitialization = false) {
-            while (Foyer.DoIntroSequence && Foyer.DoMainMenu) { yield return null; }
-            while (!GameManager.Instance.PrimaryPlayer) { if (!GameManager.Instance) { break; } yield return null; }
-            if (skipInitialization) {
-                while (Dungeon.IsGenerating | GameManager.Instance.IsLoadingLevel) { yield return null; }
-                if (DisableRoomOcclusion) { Pixelator.Instance.DoOcclusionLayer = false; }
-                if (Enable43AspectRatio) { BraveCameraUtility.OverrideAspect = 1.33333333333f; }
-                ToggleHooksAndPerspectiveMode(Enable3D);
-            } else {
-                if (BraveCameraUtility.OverrideAspect.HasValue) { PreviousAspectRatioOverride = BraveCameraUtility.OverrideAspect.Value; }
-                previousScalingMode = GameManager.Options.CurrentPreferredScalingMode;
-                if (PlayerPrefs.GetInt(PerspectiveModeEnabled) == 1) {
-                    Enable3D = true;
-                    ToggleHooksAndPerspectiveMode(Enable3D);
-                    GameManager.Instance.OnNewLevelFullyLoaded += OnLevelFullyLoaded;
-                }
-                if (PlayerPrefs.GetInt(RoomOcclusionDisabled) == 1) { DisableRoomOcclusion = true; }
-                if (PlayerPrefs.GetInt(AspectRatioOverrideEnabled) == 1) { Enable43AspectRatio = true; }
-                if (DisableRoomOcclusion) { Pixelator.Instance.DoOcclusionLayer = false; }
-                if (Enable43AspectRatio) { BraveCameraUtility.OverrideAspect = 1.33333333333f; }
-            }
-            yield break;
-        }
-        
-        public static void OnLevelFullyLoaded() {
-            if (gameManagerHook == null) {
-                gameManagerHook = new Hook(
-                    typeof(GameManager).GetMethod("Awake", BindingFlags.NonPublic | BindingFlags.Instance),
-                    typeof(NewPerspective).GetMethod("GameManager_Awake", BindingFlags.NonPublic | BindingFlags.Instance),
-                    typeof(GameManager)
-                );
-            }
-            GameManager.Instance.StartCoroutine(WaitForCharacterSelect(true));
-        }
-        
         private void ConsoleInfo(string[] consoleText) {
             if (ETGModConsole.Commands.GetGroup(ConsoleCommandName) != null && ETGModConsole.Commands.GetGroup(ConsoleCommandName).GetAllUnitNames() != null) {
                 List<string> m_CommandList = new List<string>();
@@ -129,76 +70,132 @@ namespace NewPerspective {
 
         private void Toggle3DSetting(string[] consoleText) {
             int enable3D = 0;
-            if (!Enable3D) {
-                Enable3D = true;
+            if (!OcclusionMonitorObject | !occlusionMonitor) { CreateMonitor(); }
+
+            occlusionMonitor.Configured = false;
+            occlusionMonitor.state = OcclusionMonitor.State.ChangingSettings;
+
+            if (occlusionMonitor.Enable3D) {
+                occlusionMonitor.Enable3D = false;
+                ETGModConsole.Log(ModNameInGreen + "Perspective mode disabled.\n");
+            } else {
+                occlusionMonitor.Enable3D = true;
                 enable3D = 1;
                 ETGModConsole.Log(ModNameInGreen + "Perspective mode enabled.\n");
-                GameManager.Instance.OnNewLevelFullyLoaded += OnLevelFullyLoaded;
-            } else {
-                Enable3D = false;
-                GameManager.Instance.OnNewLevelFullyLoaded -= OnLevelFullyLoaded;
-                ETGModConsole.Log(ModNameInGreen + "Perspective mode disabled.\n");
             }
-            ToggleHooksAndPerspectiveMode(Enable3D);
+
             PlayerPrefs.SetInt(PerspectiveModeEnabled, enable3D);
             PlayerPrefs.Save();
+
+            occlusionMonitor.ToggleHooksAndPerspectiveMode(occlusionMonitor.Enable3D);
+
+            occlusionMonitor.Configured = true;
         }
 
         private void ToggleRoomOcclusion(string[] consoleText) {
+            if (!OcclusionMonitorObject | !occlusionMonitor) { CreateMonitor(); }
+            occlusionMonitor.Configured = false;
+            occlusionMonitor.state = OcclusionMonitor.State.ChangingSettings;
+
             if (PlayerPrefs.GetInt(RoomOcclusionDisabled) == 1) {
                 PlayerPrefs.SetInt(RoomOcclusionDisabled, 0);
-                DisableRoomOcclusion = false;
-                Pixelator.Instance.DoOcclusionLayer = true;
-                if (Enable3D) { GameManager.Instance.MainCameraController.OverrideZoomScale = 0.5f; }
+                occlusionMonitor.DisableRoomOcclusion = false;
                 ETGModConsole.Log(ModNameInGreen + "Room Occlusion enabled!");
             } else {
                 PlayerPrefs.SetInt(RoomOcclusionDisabled, 1);
-                DisableRoomOcclusion = true;
-                Pixelator.Instance.DoOcclusionLayer = false;
-                if (Enable3D) { GameManager.Instance.MainCameraController.OverrideZoomScale = 0.6f; }
+                occlusionMonitor.DisableRoomOcclusion = true;
                 ETGModConsole.Log(ModNameInGreen + "Room Occlusion disabled!");
             }
             PlayerPrefs.Save();
+            occlusionMonitor.Configured = true;
         }
 
         private void Toggle43Aspect(string[] consoleText) {
+            if (!OcclusionMonitorObject | !occlusionMonitor) { CreateMonitor(); }
+
             int aspectRatioEnabled = 1;
-            if (Enable43AspectRatio) {
+
+            occlusionMonitor.Configured = false;
+            occlusionMonitor.state = OcclusionMonitor.State.ChangingSettings;
+
+            if (occlusionMonitor.Enable43AspectRatio) {
                 aspectRatioEnabled = 0;
-                Enable43AspectRatio = false;
-                if (PreviousAspectRatioOverride.HasValue) {
-                    BraveCameraUtility.OverrideAspect = PreviousAspectRatioOverride;
-                } else {
-                    BraveCameraUtility.OverrideAspect = null;
-                }
+                occlusionMonitor.Enable43AspectRatio = false;
                 ETGModConsole.Log(ModNameInGreen + "Aspect Ratio restored to normal!");
             } else {
-                Enable43AspectRatio = true;
-                BraveCameraUtility.OverrideAspect = 1.33333333333f;
+                occlusionMonitor.Enable43AspectRatio = true;                
                 ETGModConsole.Log(ModNameInGreen + "Aspect Ratio forced to 4:3!");
             }
             PlayerPrefs.SetInt(AspectRatioOverrideEnabled, aspectRatioEnabled);
             PlayerPrefs.Save();
+            occlusionMonitor.Configured = true;
         }
 
+        public void CreateMonitor(bool Do3DEnable = false) {
+            OcclusionMonitorObject = new GameObject("NewPerspective Monitor", new Type[] { typeof(OcclusionMonitor) });
+            occlusionMonitor = OcclusionMonitorObject.GetComponent<OcclusionMonitor>();
+            occlusionMonitor.PreviousZoomScaleOverride = GameManager.Instance.MainCameraController.OverrideZoomScale;
 
-        public void UpdateZDepthInternal(Action<tk2dBaseSprite, float, float>orig, tk2dBaseSprite self, float targetZValue, float currentYValue) {
-            float zValueOverride = targetZValue;
-            if (GameManager.Instance.MainCameraController.IsPerspectiveMode && targetZValue < 0) {
-                zValueOverride = 0;
-                orig(self, zValueOverride, currentYValue);
-            } else {
-                orig(self, targetZValue, currentYValue);
-            }
+            if (PlayerPrefs.GetInt(RoomOcclusionDisabled) == 1) { occlusionMonitor.DisableRoomOcclusion = true; }
+            if (PlayerPrefs.GetInt(AspectRatioOverrideEnabled) == 1) { occlusionMonitor.Enable43AspectRatio = true; }
+            if (PlayerPrefs.GetInt(PerspectiveModeEnabled) == 1) { occlusionMonitor.Enable3D = true; }
+
+            if (Do3DEnable) { occlusionMonitor.ToggleHooksAndPerspectiveMode(occlusionMonitor.Enable3D); }
+
+            occlusionMonitor.state = OcclusionMonitor.State.ChangingSettings;
+            occlusionMonitor.Configured = true;
         }
         
+
+        public override void Exit() { }
+    }
+
+    public class OcclusionMonitor : BraveBehaviour {
+
+        public OcclusionMonitor() {
+            Configured = false;
+            Enable3D = false;
+            DisableRoomOcclusion = false;
+            Enable43AspectRatio = false;
+
+            state = State.ChangingSettings;
+            
+            if (BraveCameraUtility.OverrideAspect.HasValue) { m_PreviousAspectRatioOverride = BraveCameraUtility.OverrideAspect.Value; }
+            m_AspectRatioZoomFactor = 0.675f;
+            m_PreviousAspectRatioZoomFactor = GameManager.Instance.MainCameraController.OverrideZoomScale;
+            m_previousScalingMode = GameManager.Options.CurrentPreferredScalingMode;
+
+            DontDestroyOnLoad(gameObject);
+        }
+
+        public bool Configured;
+        public bool Enable3D;
+        public bool DisableRoomOcclusion;
+        public bool Enable43AspectRatio;
+
+        // private readonly float AspectRatioZoomFactor = 0.74777777777f;
+        private readonly float m_AspectRatioZoomFactor;
+        private readonly float m_PreviousAspectRatioZoomFactor;
+
+        public float PreviousZoomScaleOverride;
+        
+        public enum State { ChangingSettings, DefaultWaitState, WaitForLevelLoad };
+
+        public State state;
+
+        public Hook zOffsetHook;
+
+        private GameOptions.PreferredScalingMode m_previousScalingMode;
+
+        private float? m_PreviousAspectRatioOverride;
+
         public float CurrentZOffsetHook(Func<CameraController, float> orig, CameraController self) {
             if (self.IsPerspectiveMode) { return self.transform.position.y - 20f; } // -40 was original value
             return orig(self);
         }
         
-        public static void ToggleHooksAndPerspectiveMode(bool state) {
-            if (state) {
+        public void ToggleHooksAndPerspectiveMode(bool mode) {
+            if (mode) {
                 GameManager.Instance.MainCameraController.Camera.orthographic = false;
                 GameManager.Instance.MainCameraController.IsPerspectiveMode = true;
                 if (DisableRoomOcclusion) {
@@ -209,59 +206,107 @@ namespace NewPerspective {
                 if (Pixelator.Instance.slavedCameras != null && Pixelator.Instance.slavedCameras.Count > 0) {
                     foreach (Camera camera in Pixelator.Instance.slavedCameras) {
                         camera.orthographic = false;
-                        // camera.transparencySortMode = TransparencySortMode.Perspective;
                     }
                 }
                 if (Pixelator.Instance.AdditionalPreBGCamera) {
                     Pixelator.Instance.AdditionalPreBGCamera.orthographic = false;
-                    // Pixelator.Instance.AdditionalPreBGCamera.transparencySortMode = TransparencySortMode.Perspective;
                 }
                 if (Pixelator.Instance.AdditionalBGCamera) {
                     Pixelator.Instance.AdditionalBGCamera.orthographic = false;
-                    // Pixelator.Instance.AdditionalBGCamera.transparencySortMode = TransparencySortMode.Perspective;
                 }
                 if (zOffsetHook == null) {
                     zOffsetHook = new Hook(
                         typeof(CameraController).GetProperty(nameof(GameManager.Instance.MainCameraController.CurrentZOffset)).GetGetMethod(),
-                        typeof(NewPerspective).GetMethod(nameof(CurrentZOffsetHook)),
+                        typeof(OcclusionMonitor).GetMethod(nameof(CurrentZOffsetHook)),
                         typeof(CameraController)
                     );
                 }
-                /*if (zSpriteDepthHook == null) {
-                    zSpriteDepthHook = new Hook(
-                        typeof(tk2dBaseSprite).GetMethod("UpdateZDepthInternal", BindingFlags.NonPublic | BindingFlags.Instance),
-                        typeof(NewPerspective).GetMethod(nameof(UpdateZDepthInternal), BindingFlags.Public | BindingFlags.Instance),
-                        typeof(tk2dBaseSprite)
-                    );
-                }*/
                 GameManager.Options.CurrentPreferredScalingMode = GameOptions.PreferredScalingMode.UNIFORM_SCALING_FAST;
             } else {
                 GameManager.Instance.MainCameraController.Camera.orthographic = true;
                 GameManager.Instance.MainCameraController.IsPerspectiveMode = false;
-                GameManager.Instance.MainCameraController.OverrideZoomScale = PreviousZoomScaleOverride;
+                if (Enable43AspectRatio) {
+                    GameManager.Instance.MainCameraController.OverrideZoomScale = m_AspectRatioZoomFactor;
+                } else {
+                    GameManager.Instance.MainCameraController.OverrideZoomScale = PreviousZoomScaleOverride;
+                }
                 if (Pixelator.Instance.slavedCameras != null && Pixelator.Instance.slavedCameras.Count > 0) {
                     foreach (Camera camera in Pixelator.Instance.slavedCameras) { camera.orthographic = true; }
                 }
-                
                 
                 if (Pixelator.Instance.AdditionalPreBGCamera) { Pixelator.Instance.AdditionalPreBGCamera.orthographic = true; }
                 if (Pixelator.Instance.AdditionalBGCamera) { Pixelator.Instance.AdditionalBGCamera.orthographic = true; }
                 
                 if (zOffsetHook != null) { zOffsetHook.Dispose(); zOffsetHook = null; }
-                if (gameManagerHook != null) { gameManagerHook.Dispose(); gameManagerHook = null; }
-                // if (zSpriteDepthHook != null) { zSpriteDepthHook.Dispose(); zSpriteDepthHook = null; }
-                GameManager.Options.CurrentPreferredScalingMode = previousScalingMode;
+                GameManager.Options.CurrentPreferredScalingMode = m_previousScalingMode;
             }
-            Enable3D = state;
+            Enable3D = mode;
         }
         
-        public override void Exit() { }
-    }
 
-    public class OcclusionMonitor : MonoBehaviour {
         public void Update() {
-            if (!NewPerspective.DisableRoomOcclusion | Dungeon.IsGenerating | GameManager.Instance.IsLoadingLevel) { return; }
-            if (Pixelator.Instance && Pixelator.Instance.DoOcclusionLayer) { Pixelator.Instance.DoOcclusionLayer = false; }
+            if (!Configured | Foyer.DoIntroSequence | Foyer.DoMainMenu) { return; }
+            if (!GameManager.Instance?.PrimaryPlayer) { return; }
+
+            switch (state) {
+                case State.ChangingSettings:
+                    if (PlayerPrefs.GetInt(NewPerspective.PerspectiveModeEnabled) == 1) {
+                        Enable3D = true;                        
+                    } else {
+                        Enable3D = false;
+                        if (!Enable43AspectRatio) {
+                            GameManager.Instance.MainCameraController.OverrideZoomScale = m_PreviousAspectRatioZoomFactor;
+                        }
+                    }
+                    if (PlayerPrefs.GetInt(NewPerspective.RoomOcclusionDisabled) == 1) {
+                        DisableRoomOcclusion = true;
+                    } else {
+                        DisableRoomOcclusion = false;
+                        if (!(bool)Pixelator.Instance?.DoOcclusionLayer) { Pixelator.Instance.DoOcclusionLayer = true; }
+                    }
+                    if (PlayerPrefs.GetInt(NewPerspective.AspectRatioOverrideEnabled) == 1) {
+                        Enable43AspectRatio = true;
+                    } else {
+                        Enable43AspectRatio = false;
+                        if (!Enable3D) { GameManager.Instance.MainCameraController.OverrideZoomScale = m_AspectRatioZoomFactor; }
+                        // BraveCameraUtility.OverrideAspect = m_PreviousAspectRatioOverride;
+                        BraveCameraUtility.OverrideAspect = null;
+                    }
+                    if (!DisableRoomOcclusion && !Enable3D && Pixelator.Instance) {
+                        Pixelator.Instance.DoOcclusionLayer = true;
+                    }
+                    state = State.WaitForLevelLoad;
+                    return;
+                case State.DefaultWaitState:
+                    if (DisableRoomOcclusion | Enable3D) {
+                        if ((bool)Pixelator.Instance?.DoOcclusionLayer) { Pixelator.Instance.DoOcclusionLayer = false; }
+                        if (GameManager.Instance?.Dungeon) {
+                            foreach (RoomHandler room in GameManager.Instance?.Dungeon?.data?.rooms) { room.SetRoomActive(true); }
+                        }
+                    }
+                    if (Enable43AspectRatio) {
+                        if (Enable3D) {
+                            if (GameManager.Instance.MainCameraController.OverrideZoomScale != 1) {
+                                GameManager.Instance.MainCameraController.OverrideZoomScale = 1;
+                            }
+                        } else {
+                            if (GameManager.Instance.MainCameraController.OverrideZoomScale != m_AspectRatioZoomFactor) {
+                                GameManager.Instance.MainCameraController.OverrideZoomScale = m_AspectRatioZoomFactor;
+                            }
+                        }
+                        if (BraveCameraUtility.OverrideAspect != 1.33333333333f) { BraveCameraUtility.OverrideAspect = 1.33333333333f; }
+                    }
+                    return;
+                case State.WaitForLevelLoad:
+                    if (Dungeon.IsGenerating | GameManager.Instance.IsLoadingLevel) { return; }
+                    state = State.DefaultWaitState;
+                    return;
+            }
+        }
+
+        protected override void OnDestroy() {
+            if (zOffsetHook != null) { zOffsetHook.Dispose(); zOffsetHook = null; }
+            base.OnDestroy();
         }
     }
 }

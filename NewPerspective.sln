@@ -3,18 +3,15 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewPerspective", "NewPerspective\NewPerspective.csproj", "{42932DEC-6CBB-4428-AAB7-35C7BEE8110B}"
+Project("{0F1FBA65-7372-40D8-9307-4FF8F488A8F9") = "NewPerspective", "NewPerspective\NewPerspective.csproj", "{BB7FB1EE-CAF3-4BAB-926F-7861B1356549}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{42932DEC-6CBB-4428-AAB7-35C7BEE8110B}.Debug|Any CPU.ActiveCfg = Release|Any CPU
-		{42932DEC-6CBB-4428-AAB7-35C7BEE8110B}.Debug|Any CPU.Build.0 = Release|Any CPU
-		{42932DEC-6CBB-4428-AAB7-35C7BEE8110B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{42932DEC-6CBB-4428-AAB7-35C7BEE8110B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BB7FB1EE-CAF3-4BAB-926F-7861B1356549}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BB7FB1EE-CAF3-4BAB-926F-7861B1356549}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
