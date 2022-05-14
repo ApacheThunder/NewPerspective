@@ -1,4 +1,4 @@
-NewPerspective v1.1 - Apache Thunder
+NewPerspective v1.2 - Apache Thunder
 
 Want to experience new perspective to Gungeon? With this mod you can enable "3D" mode which reveals the true underlying 3D nature of the game.
 
