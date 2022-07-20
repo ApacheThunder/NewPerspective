@@ -3,11 +3,18 @@ using System;
 using MonoMod.RuntimeDetour;
 using UnityEngine;
 using Dungeonator;
+using BepInEx;
 
-namespace NewPerspective { 
+namespace NewPerspective {
 
-    public class NewPerspective : ETGModule {
-        
+    [BepInDependency("etgmodding.etg.mtgapi")]
+    [BepInPlugin(GUID, ModName, VERSION)]
+    public class NewPerspective : BaseUnityPlugin {
+
+        public const string GUID = "ApacheThunder.etg.NewPerspective";
+        public const string ModName = "NewPerspective";
+        public const string VERSION = "1.3.0";
+
         public static readonly string ConsoleCommandName = "perspective";
         public static readonly string PerspectiveModeEnabled = "3DModeEnabled";
         public static readonly string RoomOcclusionDisabled = "RoomOcclusionLayerDisabled";
@@ -17,10 +24,9 @@ namespace NewPerspective {
         public static GameObject OcclusionMonitorObject;
         public static OcclusionMonitor occlusionMonitor;
         
-        
-        public override void Init() { }
-        
-        public override void Start() {
+        public void Start() { ETGModMainBehaviour.WaitForGameManagerStart(GMStart); }
+
+        public void GMStart(GameManager gameManager) {
             ETGModConsole.Commands.AddGroup(ConsoleCommandName, ConsoleInfo);
             ETGModConsole.Commands.GetGroup(ConsoleCommandName).AddUnit("toggle3d", Toggle3DSetting);
             ETGModConsole.Commands.GetGroup(ConsoleCommandName).AddUnit("occlusion", ToggleRoomOcclusion);
@@ -153,7 +159,6 @@ namespace NewPerspective {
             occlusionMonitor.Enabled = CreateEnabled;
         }
         
-        public override void Exit() { }
     }
 
     public class OcclusionMonitor : BraveBehaviour {
@@ -197,7 +202,6 @@ namespace NewPerspective {
         private GameOptions.PreferredScalingMode m_previousScalingMode;
         private bool m_3DModeSet;
         private bool m_ReturnedToFoyer;
-        // private readonly float AspectRatioZoomFactor = 0.74777777777f;
         private float m_AspectRatio;
         private float m_AspectRatioZoomFactor;
         private float m_PreviousAspectRatioZoomFactor;

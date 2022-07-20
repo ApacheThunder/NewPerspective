@@ -1,4 +1,4 @@
-NewPerspective v1.2 - Apache Thunder
+NewPerspective v1.3 (BepInEx version) - Apache Thunder
 
 Want to experience new perspective to Gungeon? With this mod you can enable "3D" mode which reveals the true underlying 3D nature of the game.
 
@@ -16,3 +16,6 @@ perspective occlusion
 Also I've added a command that allows playing the game in 4:3 aspect ratio. Use this if you have a CRT monitor as those are typically 4:3 aspect ratio:
 
 perspective aspectratio
+
+Credits:
+* SpecialAPI for helping port the mod to the BepInEx version of MTG. (and for making MTG possible with BepInEx!)
